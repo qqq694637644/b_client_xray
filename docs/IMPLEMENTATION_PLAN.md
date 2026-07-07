@@ -2,9 +2,11 @@
 
 ## 1. 项目定位
 
-`b_client_xray` 是一个给个人自用的 B 端 Xray 可视化管理面板。
+`b_client_xray` 是一个给个人自用的 Windows B 端 Xray 可视化管理面板。
 
-它只解决一个问题：
+它只支持 Windows 版部署；Xray 可执行文件固定按 `xray.exe` 处理。
+
+它的流量模型：
 
 ```text
 A 端 x-ui 创建一个或多个本地转发隧道
@@ -67,7 +69,7 @@ agent
 后端使用：
 
 ```text
-Python 3.11+
+Windows + Python 3.11+
 FastAPI
 Jinja2 模板
 普通 HTML + fetch
@@ -83,20 +85,20 @@ data/settings.json
 生成的 Xray 配置保存到用户指定的 Xray 目录：
 
 ```text
-<xray_path>/config.json
+<xray_path>\\config.json
 ```
 
 Xray 可执行文件默认约定为：
 
 ```text
-<xray_path>/xray
+<xray_path>\\xray.exe
 ```
 
 例如：
 
 ```text
-/opt/xray/
-├── xray
+C:\xray\
+├── xray.exe
 └── config.json
 ```
 
@@ -125,7 +127,7 @@ Xray 可执行文件默认约定为：
 ```text
 Xray 路径
 config.json 路径
-Xray 服务名
+Windows Xray 服务名
 Xray 服务状态
 隧道总数
 启用隧道数
@@ -148,7 +150,7 @@ Xray 服务状态
 
 ```text
 Xray 目录
-Xray 服务名
+Windows Xray 服务名
 面板监听地址
 面板监听端口
 B 端公网地址，可选，只用于复制 A 端参数
@@ -157,7 +159,7 @@ B 端公网地址，可选，只用于复制 A 端参数
 默认值：
 
 ```text
-xray_path = /opt/xray
+xray_path = C:\xray
 xray_service_name = xray
 host = 127.0.0.1
 port = 18080
@@ -167,8 +169,8 @@ public_address = ""
 Xray 路径逻辑：
 
 ```text
-xray_bin = <xray_path>/xray
-xray_config = <xray_path>/config.json
+xray_bin = <xray_path>\\xray.exe
+xray_config = <xray_path>\\config.json
 ```
 
 ### 6.3 隧道管理页
@@ -463,8 +465,8 @@ writeBufferSize：2
 
 ```text
 1. 根据当前网页表单配置生成 JSON
-2. 写入临时文件：<xray_path>/.config.x-ui-test.json
-3. 执行：<xray_path>/xray run -test -config <temp-file>
+2. 写入临时文件：<xray_path>\\.config.x-ui-test.json
+3. 执行：<xray_path>\\xray.exe run -test -config <temp-file>
 4. 返回 stdout / stderr
 5. 校验成功才允许保存或重启
 ```
@@ -499,7 +501,7 @@ subprocess.run(f"{xray_bin} run -test -config {temp_config}", shell=True)
 
 ## 15. 重启 Xray 流程
 
-第一版优先使用 systemd 服务方式，因为 B 端通常是服务运行。
+第一版优先使用 Windows 服务方式，因为本项目只支持 Windows。
 
 设置项：
 
@@ -510,13 +512,13 @@ xray_service_name = xray
 重启命令：
 
 ```text
-systemctl restart <xray_service_name>
+sc.exe stop <xray_service_name>；sc.exe start <xray_service_name>
 ```
 
 状态命令：
 
 ```text
-systemctl is-active <xray_service_name>
+sc.exe query <xray_service_name>
 ```
 
 实现注意：
@@ -524,22 +526,22 @@ systemctl is-active <xray_service_name>
 ```text
 不要让用户输入完整命令
 只允许输入 service name
-后端固定执行 systemctl restart / is-active
+后端固定执行 sc.exe stop/start/query
 ```
 
-如果用户不使用 systemd，第二版再加 direct process 模式。
+第一版不支持 Linux/systemd，也不支持 direct process 模式。
 
 ## 16. 保存并重启的回滚流程
 
 ```text
 1. 根据网页隧道配置生成新 config
-2. xray run -test 校验
+2. xray.exe run -test 校验
 3. 备份旧 config.json
 4. 写入新 config.json
-5. systemctl restart xray
+5. sc.exe stop/start xray
 6. 如果 restart 成功：完成
 7. 如果 restart 失败：恢复旧 config.json
-8. 再尝试 systemctl restart xray
+8. 再尝试 sc.exe stop/start xray
 9. 返回失败日志
 ```
 
@@ -552,8 +554,8 @@ b_client_xray/
 │   ├── config.py
 │   ├── storage.py
 │   ├── models.py
-│   ├── xray_config.py
-│   ├── xray_runtime.py
+│   ├── xray.exe_config.py
+│   ├── xray.exe_runtime.py
 │   ├── routers/
 │   │   ├── pages.py
 │   │   ├── api_settings.py
@@ -581,7 +583,7 @@ b_client_xray/
 
 ```json
 {
-  "xray_path": "/opt/xray",
+  "xray_path": "C:\\xray",
   "xray_service_name": "xray",
   "panel_host": "127.0.0.1",
   "panel_port": 18080,
@@ -701,10 +703,10 @@ UUID / seed 自动生成
 ### 阶段 4：Xray 校验和应用
 
 ```text
-xray run -test
+xray.exe run -test
 config.json 备份
 原子保存
-systemctl restart
+sc.exe stop/start
 失败回滚
 状态显示
 ```
@@ -714,7 +716,7 @@ systemctl restart
 ```text
 requirements.txt
 启动脚本
-systemd service 示例
+Windows 服务使用说明
 README 使用说明
 ```
 
@@ -727,7 +729,7 @@ README 使用说明
 2. 能在表格中编辑、删除、启用、禁用每个隧道
 3. 能自动把多个启用隧道合成一个完整 config.json
 4. 用户不需要手写或拼接 JSON
-5. 生成的 config.json 能通过 xray run -test
+5. 生成的 config.json 能通过 xray.exe run -test
 6. 能备份并保存 config.json
 7. 能重启 Xray 服务
 8. A 端 x-ui 使用每个隧道显示的参数能连接 B 端
@@ -743,8 +745,6 @@ README 使用说明
 读取 Xray access/error log
 更漂亮的 UI
 单 token 登录
-Windows 运行方式
-非 systemd direct process 模式
 导入已有 config.json
 ```
 

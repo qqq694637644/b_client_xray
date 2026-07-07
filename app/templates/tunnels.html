@@ -1,0 +1,167 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h1>多隧道管理</h1>
+  <p>这里是主要配置入口。你只需要在网页表格和表单里管理多个隧道，后端会自动合成一个 Xray config.json。</p>
+  <button onclick="newTunnel()">新增隧道</button>
+  <table>
+    <thead>
+      <tr>
+        <th>启用</th><th>名称</th><th>协议</th><th>监听</th><th>mKCP</th><th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="tunnelRows"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2 id="formTitle">新增隧道</h2>
+  <input type="hidden" id="id">
+  <div class="grid">
+    <div><label>名称</label><input id="name"></div>
+    <div><label>启用 <input id="enable" type="checkbox"></label></div>
+    <div><label>监听地址</label><input id="listen"></div>
+    <div><label>监听端口</label><input id="port" type="number"></div>
+    <div><label>协议</label><select id="protocol"><option value="vless">vless</option><option value="vmess">vmess</option></select></div>
+    <div><label>UUID</label><input id="uuid"><button class="secondary" onclick="generateUuid()">生成 UUID</button></div>
+    <div><label>mKCP header</label><select id="kcp_header_type"><option>none</option><option>srtp</option><option>utp</option><option>wechat-video</option><option>dtls</option><option>wireguard</option></select></div>
+    <div><label>mKCP seed</label><input id="kcp_seed"><button class="secondary" onclick="generateSeed()">生成 seed</button></div>
+    <div><label>mtu</label><input id="kcp_mtu" type="number"></div>
+    <div><label>tti</label><input id="kcp_tti" type="number"></div>
+    <div><label>uplinkCapacity</label><input id="kcp_uplink_capacity" type="number"></div>
+    <div><label>downlinkCapacity</label><input id="kcp_downlink_capacity" type="number"></div>
+    <div><label>congestion <input id="kcp_congestion" type="checkbox"></label></div>
+    <div><label>readBufferSize</label><input id="kcp_read_buffer_size" type="number"></div>
+    <div><label>writeBufferSize</label><input id="kcp_write_buffer_size" type="number"></div>
+    <div><label>备注</label><input id="remark"></div>
+  </div>
+  <button onclick="saveTunnel()">保存隧道</button>
+  <button class="secondary" onclick="newTunnel()">清空表单</button>
+</div>
+
+<div class="card">
+  <h2>输出</h2>
+  <pre id="message">无输出</pre>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let tunnels = [];
+const fields = ['id','name','listen','port','protocol','uuid','kcp_header_type','kcp_seed','kcp_mtu','kcp_tti','kcp_uplink_capacity','kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'];
+
+function defaultTunnel() {
+  return {
+    id: '', name: 'default', enable: true, listen: '0.0.0.0', port: 40000,
+    protocol: 'vless', uuid: crypto.randomUUID(), kcp_header_type: 'none',
+    kcp_seed: Math.random().toString(36).slice(2, 14), kcp_mtu: 1350, kcp_tti: 20,
+    kcp_uplink_capacity: 20, kcp_downlink_capacity: 100, kcp_congestion: false,
+    kcp_read_buffer_size: 2, kcp_write_buffer_size: 2, remark: ''
+  };
+}
+
+async function loadTunnels() {
+  tunnels = await api('/api/tunnels');
+  const rows = document.getElementById('tunnelRows');
+  rows.innerHTML = '';
+  for (const tunnel of tunnels) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${tunnel.enable ? '是' : '否'}</td>
+      <td>${tunnel.name}</td>
+      <td>${tunnel.protocol}</td>
+      <td>${tunnel.listen}:${tunnel.port}</td>
+      <td>${tunnel.kcp_header_type} / ${tunnel.kcp_seed ? 'seed' : 'no seed'}</td>
+      <td>
+        <button onclick="editTunnel('${tunnel.id}')">编辑</button>
+        <button onclick="toggleTunnel('${tunnel.id}')">启用/禁用</button>
+        <button onclick="copyASide('${tunnel.id}')">复制 A 端参数</button>
+        <button class="danger" onclick="deleteTunnel('${tunnel.id}')">删除</button>
+      </td>`;
+    rows.appendChild(tr);
+  }
+}
+
+function fillForm(tunnel) {
+  for (const field of fields) {
+    if (document.getElementById(field)) document.getElementById(field).value = tunnel[field] ?? '';
+  }
+  document.getElementById('enable').checked = !!tunnel.enable;
+  document.getElementById('kcp_congestion').checked = !!tunnel.kcp_congestion;
+}
+
+function readForm() {
+  return {
+    id: document.getElementById('id').value || undefined,
+    name: document.getElementById('name').value,
+    enable: document.getElementById('enable').checked,
+    listen: document.getElementById('listen').value,
+    port: Number(document.getElementById('port').value),
+    protocol: document.getElementById('protocol').value,
+    uuid: document.getElementById('uuid').value,
+    kcp_header_type: document.getElementById('kcp_header_type').value,
+    kcp_seed: document.getElementById('kcp_seed').value,
+    kcp_mtu: Number(document.getElementById('kcp_mtu').value),
+    kcp_tti: Number(document.getElementById('kcp_tti').value),
+    kcp_uplink_capacity: Number(document.getElementById('kcp_uplink_capacity').value),
+    kcp_downlink_capacity: Number(document.getElementById('kcp_downlink_capacity').value),
+    kcp_congestion: document.getElementById('kcp_congestion').checked,
+    kcp_read_buffer_size: Number(document.getElementById('kcp_read_buffer_size').value),
+    kcp_write_buffer_size: Number(document.getElementById('kcp_write_buffer_size').value),
+    remark: document.getElementById('remark').value,
+  };
+}
+
+function newTunnel() {
+  document.getElementById('formTitle').textContent = '新增隧道';
+  fillForm(defaultTunnel());
+  document.getElementById('id').value = '';
+}
+
+function editTunnel(id) {
+  const tunnel = tunnels.find(item => item.id === id);
+  if (!tunnel) return;
+  document.getElementById('formTitle').textContent = `编辑隧道：${tunnel.name}`;
+  fillForm(tunnel);
+}
+
+async function saveTunnel() {
+  const payload = readForm();
+  const id = document.getElementById('id').value;
+  try {
+    if (id) {
+      await api(`/api/tunnels/${id}`, {method: 'PUT', body: JSON.stringify(payload)});
+    } else {
+      delete payload.id;
+      await api('/api/tunnels', {method: 'POST', body: JSON.stringify(payload)});
+    }
+    await loadTunnels();
+    newTunnel();
+    showMessage('message', '保存成功');
+  } catch (err) {
+    showMessage('message', err.message);
+  }
+}
+
+async function toggleTunnel(id) {
+  await api(`/api/tunnels/${id}/toggle`, {method: 'POST'});
+  await loadTunnels();
+}
+
+async function deleteTunnel(id) {
+  if (!confirm('确定删除这个隧道吗？')) return;
+  await api(`/api/tunnels/${id}`, {method: 'DELETE'});
+  await loadTunnels();
+}
+
+async function copyASide(id) {
+  const data = await api(`/api/tunnels/${id}/copy-a-side`, {method: 'POST'});
+  await navigator.clipboard.writeText(data.text);
+  showMessage('message', data.text);
+}
+
+function generateUuid() { document.getElementById('uuid').value = crypto.randomUUID(); }
+function generateSeed() { document.getElementById('kcp_seed').value = Math.random().toString(36).slice(2, 14); }
+
+loadTunnels();
+newTunnel();
+</script>
+{% endblock %}

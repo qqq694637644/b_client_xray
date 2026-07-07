@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h1>B 端 Xray 状态</h1>
+  <div id="status">加载中...</div>
+  <button onclick="loadStatus()">刷新</button>
+  <button onclick="validateConfig()">校验生成配置</button>
+  <button onclick="saveConfig()">保存生成配置</button>
+  <button class="danger" onclick="applyConfig()">保存并重启 Xray</button>
+</div>
+<div class="card">
+  <h2>输出</h2>
+  <pre id="output">无输出</pre>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadStatus() {
+  try {
+    const data = await api('/api/status');
+    document.getElementById('status').innerHTML = `
+      <p>Xray 路径：${data.xray_path}</p>
+      <p>config.json：${data.xray_config}</p>
+      <p>服务名：${data.xray_service_name}</p>
+      <p>服务状态：${data.service_active}</p>
+      <p>隧道总数：${data.tunnel_count}</p>
+      <p>启用隧道数：${data.enabled_tunnel_count}</p>`;
+  } catch (err) {
+    showMessage('output', err.message);
+  }
+}
+async function validateConfig() {
+  try { showMessage('output', await api('/api/xray/validate', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+async function saveConfig() {
+  try { showMessage('output', await api('/api/xray/save', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+async function applyConfig() {
+  if (!confirm('将校验、保存并重启 Xray。失败会尝试恢复旧 config.json，继续吗？')) return;
+  try { showMessage('output', await api('/api/xray/apply', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+loadStatus();
+</script>
+{% endblock %}

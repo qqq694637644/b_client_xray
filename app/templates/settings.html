@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h1>设置</h1>
+  <div class="grid">
+    <div><label>Xray 目录</label><input id="xray_path" placeholder="例如 C:\\xray"></div>
+    <div><label>Xray Windows 服务名</label><input id="xray_service_name" placeholder="例如 xray"></div>
+    <div><label>面板监听地址</label><input id="panel_host"></div>
+    <div><label>面板监听端口</label><input id="panel_port" type="number"></div>
+    <div><label>B 端公网地址</label><input id="public_address" placeholder="复制 A 端参数时使用"></div>
+  </div>
+  <button onclick="saveSettings()">保存</button>
+</div>
+<div class="message" id="message">无输出</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function loadSettings() {
+  const data = await api('/api/settings');
+  for (const key of ['xray_path', 'xray_service_name', 'panel_host', 'panel_port', 'public_address']) {
+    document.getElementById(key).value = data[key] || '';
+  }
+}
+async function saveSettings() {
+  const payload = {
+    xray_path: document.getElementById('xray_path').value,
+    xray_service_name: document.getElementById('xray_service_name').value,
+    panel_host: document.getElementById('panel_host').value,
+    panel_port: Number(document.getElementById('panel_port').value),
+    public_address: document.getElementById('public_address').value,
+  };
+  try {
+    const data = await api('/api/settings', {method: 'POST', body: JSON.stringify(payload)});
+    showMessage('message', data);
+  } catch (err) {
+    showMessage('message', err.message);
+  }
+}
+loadSettings();
+</script>
+{% endblock %}

@@ -106,17 +106,7 @@ FastAPI 默认监听：
 127.0.0.1:18080
 ```
 
-然后用户通过 SSH tunnel 或本机访问。
-
-### 方式二：简单管理密码
-
-如果需要公网访问，使用一个简单的管理 token：
-
-```text
-ADMIN_TOKEN=your-secret-token
-```
-
-前端请求时带 cookie 或 header。
+然后用户通过 SSH tunnel 或本机访问
 
 第一版只需要单 token，不需要用户表。
 

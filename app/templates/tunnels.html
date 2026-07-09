@@ -24,8 +24,7 @@
     <div><label>监听端口</label><input id="port" type="number"></div>
     <div><label>协议</label><select id="protocol"><option value="vless">vless</option><option value="vmess">vmess</option></select></div>
     <div><label>UUID</label><input id="uuid"><button class="secondary" onclick="generateUuid()">生成 UUID</button></div>
-    <div><label>mKCP header</label><select id="kcp_header_type"><option>none</option><option>srtp</option><option>utp</option><option>wechat-video</option><option>dtls</option><option>wireguard</option></select></div>
-    <div><label>mKCP seed</label><input id="kcp_seed"><button class="secondary" onclick="generateSeed()">生成 seed</button></div>
+    <div><label>FinalMask UDP header</label><select id="kcp_final_mask_type"><option>none</option><option>header-srtp</option><option>header-utp</option><option>header-wechat</option><option>header-dtls</option><option>header-wireguard</option></select></div>
     <div><label>mtu</label><input id="kcp_mtu" type="number"></div>
     <div><label>tti</label><input id="kcp_tti" type="number"></div>
     <div><label>uplinkCapacity</label><input id="kcp_uplink_capacity" type="number"></div>
@@ -47,13 +46,13 @@
 {% block scripts %}
 <script>
 let tunnels = [];
-const fields = ['id','name','listen','port','protocol','uuid','kcp_header_type','kcp_seed','kcp_mtu','kcp_tti','kcp_uplink_capacity','kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'];
+const fields = ['id','name','listen','port','protocol','uuid','kcp_final_mask_type','kcp_mtu','kcp_tti','kcp_uplink_capacity','kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'];
 
 function defaultTunnel() {
   return {
     id: '', name: 'default', enable: true, listen: '0.0.0.0', port: 40000,
-    protocol: 'vless', uuid: crypto.randomUUID(), kcp_header_type: 'none',
-    kcp_seed: Math.random().toString(36).slice(2, 14), kcp_mtu: 1350, kcp_tti: 20,
+    protocol: 'vless', uuid: crypto.randomUUID(), kcp_final_mask_type: 'none',
+    kcp_mtu: 1350, kcp_tti: 20,
     kcp_uplink_capacity: 20, kcp_downlink_capacity: 100, kcp_congestion: false,
     kcp_read_buffer_size: 2, kcp_write_buffer_size: 2, remark: ''
   };
@@ -69,7 +68,7 @@ async function loadTunnels() {
       <td>${tunnel.name}</td>
       <td>${tunnel.protocol}</td>
       <td>${tunnel.listen}:${tunnel.port}</td>
-      <td>${tunnel.kcp_header_type} / ${tunnel.kcp_seed ? 'seed' : 'no seed'}</td>
+      <td>${tunnel.kcp_final_mask_type || 'none'} / Xray 26</td>
       <td>
         <button onclick="editTunnel('${tunnel.id}')">编辑</button>
         <button onclick="toggleTunnel('${tunnel.id}')">启用/禁用</button>
@@ -97,8 +96,7 @@ function readForm() {
     port: Number(document.getElementById('port').value),
     protocol: document.getElementById('protocol').value,
     uuid: document.getElementById('uuid').value,
-    kcp_header_type: document.getElementById('kcp_header_type').value,
-    kcp_seed: document.getElementById('kcp_seed').value,
+    kcp_final_mask_type: document.getElementById('kcp_final_mask_type').value,
     kcp_mtu: Number(document.getElementById('kcp_mtu').value),
     kcp_tti: Number(document.getElementById('kcp_tti').value),
     kcp_uplink_capacity: Number(document.getElementById('kcp_uplink_capacity').value),
@@ -159,7 +157,6 @@ async function copyASide(id) {
 }
 
 function generateUuid() { document.getElementById('uuid').value = crypto.randomUUID(); }
-function generateSeed() { document.getElementById('kcp_seed').value = Math.random().toString(36).slice(2, 14); }
 
 loadTunnels();
 newTunnel();

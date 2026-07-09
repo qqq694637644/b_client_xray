@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import secrets
 import uuid
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 Protocol = Literal["vless", "vmess"]
-KcpHeaderType = Literal["none", "srtp", "utp", "wechat-video", "dtls", "wireguard"]
+KcpFinalMaskType = Literal["none", "header-srtp", "header-utp", "header-wechat", "header-dtls", "header-wireguard"]
+
+LEGACY_KCP_HEADER_TO_FINAL_MASK = {
+    "": "none",
+    "none": "none",
+    "srtp": "header-srtp",
+    "utp": "header-utp",
+    "wechat-video": "header-wechat",
+    "dtls": "header-dtls",
+    "wireguard": "header-wireguard",
+}
 
 
 def new_tunnel_id() -> str:
@@ -18,10 +28,6 @@ def new_uuid() -> str:
     return str(uuid.uuid4())
 
 
-def new_seed() -> str:
-    return secrets.token_urlsafe(12)
-
-
 class Tunnel(BaseModel):
     id: str = Field(default_factory=new_tunnel_id)
     name: str = "default"
@@ -30,8 +36,7 @@ class Tunnel(BaseModel):
     port: int = 40000
     protocol: Protocol = "vless"
     uuid: str = Field(default_factory=new_uuid)
-    kcp_header_type: KcpHeaderType = "none"
-    kcp_seed: str = Field(default_factory=new_seed)
+    kcp_final_mask_type: KcpFinalMaskType = "none"
     kcp_mtu: int = 1350
     kcp_tti: int = 20
     kcp_uplink_capacity: int = 20
@@ -41,7 +46,22 @@ class Tunnel(BaseModel):
     kcp_write_buffer_size: int = 2
     remark: str = ""
 
-    @field_validator("name", "listen", "uuid", "kcp_seed")
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_kcp_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        migrated = dict(data)
+        if "kcp_final_mask_type" not in migrated:
+            legacy_header = str(migrated.get("kcp_header_type", "")).strip()
+            migrated["kcp_final_mask_type"] = LEGACY_KCP_HEADER_TO_FINAL_MASK.get(
+                legacy_header,
+                legacy_header,
+            )
+        return migrated
+
+    @field_validator("name", "listen", "uuid", "kcp_final_mask_type")
     @classmethod
     def strip_text(cls, value: str) -> str:
         return value.strip()

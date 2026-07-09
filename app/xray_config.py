@@ -9,6 +9,42 @@ def tunnel_tag(tunnel: Tunnel) -> str:
     return f"tunnel-in-{tunnel.id}"
 
 
+def build_kcp_finalmask(mask_type: str) -> dict[str, Any] | None:
+    mask_type = mask_type.strip()
+    if mask_type == "" or mask_type == "none":
+        return None
+    return {
+        "udp": [
+            {
+                "type": mask_type,
+                "settings": {},
+            }
+        ]
+    }
+
+
+def build_stream_settings(tunnel: Tunnel) -> dict[str, Any]:
+    stream_settings: dict[str, Any] = {
+        "network": "mkcp",
+        "security": "none",
+        "kcpSettings": {
+            "mtu": tunnel.kcp_mtu,
+            "tti": tunnel.kcp_tti,
+            "uplinkCapacity": tunnel.kcp_uplink_capacity,
+            "downlinkCapacity": tunnel.kcp_downlink_capacity,
+            "congestion": tunnel.kcp_congestion,
+            "readBufferSize": tunnel.kcp_read_buffer_size,
+            "writeBufferSize": tunnel.kcp_write_buffer_size,
+        },
+    }
+
+    finalmask = build_kcp_finalmask(tunnel.kcp_final_mask_type)
+    if finalmask is not None:
+        stream_settings["finalmask"] = finalmask
+
+    return stream_settings
+
+
 def build_inbound(tunnel: Tunnel) -> dict[str, Any]:
     if tunnel.protocol == "vless":
         settings: dict[str, Any] = {
@@ -37,23 +73,7 @@ def build_inbound(tunnel: Tunnel) -> dict[str, Any]:
         "port": tunnel.port,
         "protocol": tunnel.protocol,
         "settings": settings,
-        "streamSettings": {
-            "network": "kcp",
-            "security": "none",
-            "kcpSettings": {
-                "mtu": tunnel.kcp_mtu,
-                "tti": tunnel.kcp_tti,
-                "uplinkCapacity": tunnel.kcp_uplink_capacity,
-                "downlinkCapacity": tunnel.kcp_downlink_capacity,
-                "congestion": tunnel.kcp_congestion,
-                "readBufferSize": tunnel.kcp_read_buffer_size,
-                "writeBufferSize": tunnel.kcp_write_buffer_size,
-                "header": {
-                    "type": tunnel.kcp_header_type,
-                },
-                "seed": tunnel.kcp_seed,
-            },
-        },
+        "streamSettings": build_stream_settings(tunnel),
     }
 
 
@@ -98,8 +118,7 @@ def build_a_side_text(settings: Settings, tunnel: Tunnel) -> str:
             f"远端端口：{tunnel.port}",
             f"UUID：{tunnel.uuid}",
             "传输：mKCP",
-            f"header type：{tunnel.kcp_header_type}",
-            f"seed：{tunnel.kcp_seed}",
+            f"FinalMask UDP header：{tunnel.kcp_final_mask_type}",
             f"mtu：{tunnel.kcp_mtu}",
             f"tti：{tunnel.kcp_tti}",
             f"uplinkCapacity：{tunnel.kcp_uplink_capacity}",

@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="card">
+  <h1>配置预览</h1>
+  <p>这里展示的是后端根据网页隧道表单自动生成的完整 Xray config.json。不要在这里手写配置。</p>
+  <button onclick="loadConfig()">刷新预览</button>
+  <button onclick="copyConfig()">复制 JSON</button>
+  <button onclick="validateConfig()">校验</button>
+  <button onclick="saveConfig()">保存</button>
+  <button class="danger" onclick="applyConfig()">保存并重启 Windows Xray 服务</button>
+</div>
+<div class="card">
+  <pre id="config">加载中...</pre>
+</div>
+<div class="card">
+  <h2>输出</h2>
+  <pre id="output">无输出</pre>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let currentConfig = null;
+async function loadConfig() {
+  try {
+    currentConfig = await api('/api/xray/config');
+    document.getElementById('config').textContent = JSON.stringify(currentConfig, null, 2);
+  } catch (err) {
+    showMessage('output', err.message);
+  }
+}
+async function copyConfig() {
+  if (!currentConfig) await loadConfig();
+  await navigator.clipboard.writeText(JSON.stringify(currentConfig, null, 2));
+  showMessage('output', '已复制 JSON');
+}
+async function validateConfig() {
+  try { showMessage('output', await api('/api/xray/validate', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+async function saveConfig() {
+  try { showMessage('output', await api('/api/xray/save', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+async function applyConfig() {
+  if (!confirm('将校验、保存并重启 Windows Xray 服务。失败会尝试恢复旧 config.json，继续吗？')) return;
+  try { showMessage('output', await api('/api/xray/apply', {method: 'POST'})); }
+  catch (err) { showMessage('output', err.message); }
+}
+loadConfig();
+</script>
+{% endblock %}

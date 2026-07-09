@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} - b_client_xray</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<nav>
+  <a href="/">状态</a>
+  <a href="/settings">设置</a>
+  <a href="/tunnels">隧道</a>
+  <a href="/preview">配置预览</a>
+</nav>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<script>
+async function api(path, options = {}) {
+  const resp = await fetch(path, {
+    headers: {'Content-Type': 'application/json'},
+    ...options,
+  });
+  const text = await resp.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) { data = text; }
+  if (!resp.ok) {
+    const detail = data && data.detail ? data.detail : text;
+    throw new Error(detail || `HTTP ${resp.status}`);
+  }
+  return data;
+}
+
+function showMessage(id, data) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (typeof data === 'string') {
+    el.textContent = data;
+  } else {
+    el.textContent = JSON.stringify(data, null, 2);
+  }
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

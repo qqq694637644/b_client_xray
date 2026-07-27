@@ -181,7 +181,7 @@ function showApplyResult(result, action) {
   if (result.applied) {
     showMessage('message', `${action}成功，Xray 配置已校验并应用。\n${result.stdout || ''}`);
   } else {
-    showMessage('message', `${action}已保存，但 Xray 应用失败；旧运行配置已保留。\n${result.stderr || ''}`);
+    showMessage('message', `${action}已保存，但 Xray 应用失败；系统已尝试恢复旧配置，请检查下方启动结果。\n${result.stderr || ''}`);
   }
 }
 

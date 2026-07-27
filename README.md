@@ -55,6 +55,7 @@ python scripts/smoke_portal.py --xray C:\xray\xray.exe
 ```
 
 Linux CI 会从精确提交 `d2758a023cd7f4174a5a5fa4ff66e487d4342ba0` 构建 Xray 后运行同一脚本。
+脚本还支持 `--a-config <config.json>`，用于读取 x-ui 实际生成的 A 端配置，再由本仓库生成 B 端配置进行配对测试。
 
 ## 本地运行
 

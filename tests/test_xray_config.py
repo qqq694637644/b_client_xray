@@ -236,9 +236,23 @@ def test_uuid_is_canonicalized_before_reverse_domain_generation() -> None:
     assert reverse_domain(upper) == reverse_domain(compact)
 
 
+def test_short_id_matches_xray_core_uuid_parse_string() -> None:
+    tunnel = Tunnel(
+        mode="portal",
+        portal_address="a.example.net",
+        protocol="vmess",
+        uuid="my-home-xray",
+    )
+
+    assert tunnel.uuid == "717ca3f3-97cd-589b-b805-3acd24b97366"
+    assert reverse_domain(tunnel) == (
+        "reverse-717ca3f3-97cd-589b-b805-3acd24b97366.xui.internal"
+    )
+
+
 def test_invalid_uuid_is_rejected() -> None:
-    with pytest.raises(ValidationError, match="UUID must be a valid"):
-        Tunnel(uuid="not-a-uuid")
+    with pytest.raises(ValidationError, match="1-30 byte legacy ID"):
+        Tunnel(uuid="1234567890123456789012345678901")
 
 
 def test_a_side_text_is_mode_aware() -> None:

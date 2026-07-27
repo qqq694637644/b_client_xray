@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import secrets
 import uuid
 from typing import Any, Literal
@@ -28,6 +29,30 @@ def new_tunnel_id() -> str:
 
 def new_uuid() -> str:
     return str(uuid.uuid4())
+
+
+def normalize_xray_uuid(value: Any) -> str:
+    text = str(value).strip()
+    encoded = text.encode("utf-8")
+    if 1 <= len(encoded) <= 30:
+        digest = bytearray(hashlib.sha1((b"\x00" * 16) + encoded).digest()[:16])
+        digest[6] = (digest[6] & 0x0F) | (5 << 4)
+        digest[8] = (digest[8] & (0xFF >> 2)) | (0x02 << 6)
+        return str(uuid.UUID(bytes=bytes(digest)))
+
+    lowered = text.lower()
+    if len(lowered) == 36:
+        if any(lowered[index] != "-" for index in (8, 13, 18, 23)):
+            raise ValueError("UUID must be a 1-30 byte legacy ID, 32 hex characters, or canonical UUID")
+        compact = lowered.replace("-", "")
+    elif len(lowered) == 32:
+        compact = lowered
+    else:
+        raise ValueError("UUID must be a 1-30 byte legacy ID, 32 hex characters, or canonical UUID")
+    try:
+        return str(uuid.UUID(hex=compact))
+    except ValueError as exc:
+        raise ValueError("UUID contains non-hex characters") from exc
 
 
 class Tunnel(BaseModel):
@@ -96,10 +121,7 @@ class Tunnel(BaseModel):
     @field_validator("uuid", mode="before")
     @classmethod
     def normalize_uuid(cls, value: Any) -> str:
-        try:
-            return str(uuid.UUID(str(value).strip()))
-        except (ValueError, AttributeError, TypeError) as exc:
-            raise ValueError("UUID must be a valid 32/36 character UUID") from exc
+        return normalize_xray_uuid(value)
 
     @field_validator("port", "portal_port", "target_port")
     @classmethod

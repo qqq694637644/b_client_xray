@@ -68,4 +68,4 @@ jobs:
           go build -trimpath -o "$RUNNER_TEMP/xray-v26.3.27" ./main
 
       - name: Run TCP/UDP Portal smoke
-        run: python scripts/smoke_portal.py --xray "$RUNNER_TEMP/xray-v26.3.27"
+        run: python scripts/smoke_portal.py --xray "$RUNNER_TEMP/xray-v26.3.27" --uuid my-home-xray

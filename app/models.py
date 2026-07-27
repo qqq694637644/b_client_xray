@@ -86,13 +86,20 @@ class Tunnel(BaseModel):
         "listen",
         "portal_address",
         "target_address",
-        "uuid",
         "kcp_final_mask_type",
         "remark",
     )
     @classmethod
     def strip_text(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("uuid", mode="before")
+    @classmethod
+    def normalize_uuid(cls, value: Any) -> str:
+        try:
+            return str(uuid.UUID(str(value).strip()))
+        except (ValueError, AttributeError, TypeError) as exc:
+            raise ValueError("UUID must be a valid 32/36 character UUID") from exc
 
     @field_validator("port", "portal_port", "target_port")
     @classmethod

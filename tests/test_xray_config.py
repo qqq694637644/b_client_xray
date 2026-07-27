@@ -217,6 +217,30 @@ def test_portal_rejects_vless() -> None:
         )
 
 
+def test_uuid_is_canonicalized_before_reverse_domain_generation() -> None:
+    upper = Tunnel(
+        mode="portal",
+        portal_address="a.example.net",
+        protocol="vmess",
+        uuid="AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+    )
+    compact = Tunnel(
+        mode="portal",
+        portal_address="a.example.net",
+        protocol="vmess",
+        uuid="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    )
+
+    assert upper.uuid == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    assert compact.uuid == upper.uuid
+    assert reverse_domain(upper) == reverse_domain(compact)
+
+
+def test_invalid_uuid_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="UUID must be a valid"):
+        Tunnel(uuid="not-a-uuid")
+
+
 def test_a_side_text_is_mode_aware() -> None:
     direct = Tunnel(
         id="ssh",

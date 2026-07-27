@@ -44,6 +44,17 @@
 - Portal 模式固定 `VMess + alterId=0 + security=auto`，不启用额外 outbound mux。
 - Portal 的目标地址和端口由 A 的 dokodemo-door 请求携带，B 的 Bridge 路由到 `direct` 后执行；`127.0.0.1` 表示 B 本机。入口网络可选 TCP、UDP 或 TCP+UDP。
 - A、B 两端的 UUID、mKCP、FinalMask 参数必须手工保持一致；实现按 Xray-core v26.3.27（提交 `d2758a023cd7f4174a5a5fa4ff66e487d4342ba0`）生成配置。
+- 网页面板可以手工启动，但“保存并应用”通过 `sc.exe` 管理 Xray，因此 `xray.exe` 必须注册为 Windows 服务，服务名与设置页一致。启动后会等待服务进入 `RUNNING` 并稳定保持 2 秒；失败时恢复旧配置。
+
+## Portal smoke test
+
+仓库保留了可复现的双实例测试，使用指定的 v26.3.27 二进制启动 A Portal、B Bridge 和本地 TCP/UDP echo，并验证 B 重启与 A 重启后的自动重连：
+
+```powershell
+python scripts/smoke_portal.py --xray C:\xray\xray.exe
+```
+
+Linux CI 会从精确提交 `d2758a023cd7f4174a5a5fa4ff66e487d4342ba0` 构建 Xray 后运行同一脚本。
 
 ## 本地运行
 

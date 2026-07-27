@@ -15,6 +15,11 @@ from app.xray_config import build_xray_config
 
 COMMAND_TIMEOUT = 30
 SERVICE_WAIT_SECONDS = 10
+SERVICE_STABLE_SECONDS = 2
+SERVICE_STATE_CODES = {
+    "STOPPED": "1",
+    "RUNNING": "4",
+}
 
 
 def xray_bin(settings: Settings) -> Path:
@@ -117,23 +122,87 @@ def service_status(settings: Settings) -> CommandResult:
     return run_command(["sc.exe", "query", settings.xray_service_name])
 
 
-def _wait_for_service_state(settings: Settings, state: str) -> None:
+def _service_state_code(result: CommandResult) -> str | None:
+    output = f"{result.stdout}\n{result.stderr}"
+    for line in output.splitlines():
+        if "STATE" not in line.upper() or ":" not in line:
+            continue
+        value = line.split(":", 1)[1].strip().split()
+        if value and value[0].isdigit():
+            return value[0]
+    return None
+
+
+def _service_is_in_state(result: CommandResult, state: str) -> bool:
+    expected = SERVICE_STATE_CODES.get(state.upper())
+    return expected is not None and _service_state_code(result) == expected
+
+
+def _wait_for_service_state(settings: Settings, state: str) -> CommandResult:
     state = state.upper()
+    last = CommandResult(ok=False, stderr="service state was not queried")
     for _ in range(SERVICE_WAIT_SECONDS):
-        result = service_status(settings)
-        output = f"{result.stdout}\n{result.stderr}".upper()
-        if state in output:
-            return
+        last = service_status(settings)
+        if _service_is_in_state(last, state):
+            return CommandResult(ok=True, stdout=last.stdout, stderr=last.stderr)
         time.sleep(1)
+    return CommandResult(
+        ok=False,
+        stdout=last.stdout,
+        stderr=f"service did not reach {state} within {SERVICE_WAIT_SECONDS}s\n{last.stderr}",
+    )
 
 
 def restart_service(settings: Settings) -> CommandResult:
     stop = run_command(["sc.exe", "stop", settings.xray_service_name])
-    _wait_for_service_state(settings, "STOPPED")
+    stopped = _wait_for_service_state(settings, "STOPPED")
+    if not stopped.ok:
+        return CommandResult(
+            ok=False,
+            stdout=f"stop:\n{stop.stdout}\nstatus:\n{stopped.stdout}",
+            stderr=f"stop:\n{stop.stderr}\nstatus:\n{stopped.stderr}",
+        )
+
     start = run_command(["sc.exe", "start", settings.xray_service_name])
-    stdout = f"stop:\n{stop.stdout}\nstart:\n{start.stdout}"
-    stderr = f"stop:\n{stop.stderr}\nstart:\n{start.stderr}"
-    return CommandResult(ok=start.ok, stdout=stdout, stderr=stderr)
+    if not start.ok:
+        return CommandResult(
+            ok=False,
+            stdout=f"stop:\n{stop.stdout}\nstart:\n{start.stdout}",
+            stderr=f"stop:\n{stop.stderr}\nstart:\n{start.stderr}",
+        )
+
+    running = _wait_for_service_state(settings, "RUNNING")
+    if not running.ok:
+        return CommandResult(
+            ok=False,
+            stdout=f"stop:\n{stop.stdout}\nstart:\n{start.stdout}\nstatus:\n{running.stdout}",
+            stderr=f"stop:\n{stop.stderr}\nstart:\n{start.stderr}\nstatus:\n{running.stderr}",
+        )
+
+    time.sleep(SERVICE_STABLE_SECONDS)
+    stable = service_status(settings)
+    if not _service_is_in_state(stable, "RUNNING"):
+        return CommandResult(
+            ok=False,
+            stdout=(
+                f"stop:\n{stop.stdout}\nstart:\n{start.stdout}\n"
+                f"running:\n{running.stdout}\nstable check:\n{stable.stdout}"
+            ),
+            stderr=(
+                f"Xray service left RUNNING state within {SERVICE_STABLE_SECONDS}s.\n"
+                f"stop:\n{stop.stderr}\nstart:\n{start.stderr}\n"
+                f"running:\n{running.stderr}\nstable check:\n{stable.stderr}"
+            ),
+        )
+
+    return CommandResult(
+        ok=True,
+        stdout=(
+            f"stop:\n{stop.stdout}\nstart:\n{start.stdout}\n"
+            f"running:\n{running.stdout}\nstable check:\n{stable.stdout}"
+        ),
+        stderr=f"stop:\n{stop.stderr}\nstart:\n{start.stderr}",
+    )
 
 
 def restore_backup(settings: Settings, backup_path: Path | None) -> None:

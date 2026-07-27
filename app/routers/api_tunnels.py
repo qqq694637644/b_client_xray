@@ -5,8 +5,20 @@ from fastapi import APIRouter, HTTPException
 from app import storage
 from app.models import Tunnel
 from app.xray_config import build_a_side_text
+from app.xray_runtime import apply_config
 
 router = APIRouter(prefix="/api/tunnels")
+
+
+def apply_saved_change(tunnel: Tunnel | None = None) -> dict:
+    result = apply_config(storage.load_settings())
+    return {
+        "saved": True,
+        "applied": result.ok,
+        "tunnel": tunnel,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
 
 
 @router.get("")
@@ -17,19 +29,21 @@ def list_tunnels():
 @router.post("")
 def create_tunnel(payload: Tunnel):
     try:
-        return storage.add_tunnel(payload)
+        tunnel = storage.add_tunnel(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return apply_saved_change(tunnel)
 
 
 @router.put("/{tunnel_id}")
 def update_tunnel(tunnel_id: str, payload: Tunnel):
     try:
-        return storage.update_tunnel(tunnel_id, payload)
+        tunnel = storage.update_tunnel(tunnel_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return apply_saved_change(tunnel)
 
 
 @router.delete("/{tunnel_id}")
@@ -38,15 +52,16 @@ def delete_tunnel(tunnel_id: str):
         storage.delete_tunnel(tunnel_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"ok": True}
+    return apply_saved_change()
 
 
 @router.post("/{tunnel_id}/toggle")
 def toggle_tunnel(tunnel_id: str):
     try:
-        return storage.toggle_tunnel(tunnel_id)
+        tunnel = storage.toggle_tunnel(tunnel_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return apply_saved_change(tunnel)
 
 
 @router.post("/{tunnel_id}/copy-a-side")

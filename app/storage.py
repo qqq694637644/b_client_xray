@@ -50,17 +50,28 @@ def list_tunnels() -> list[Tunnel]:
     return load_settings().tunnels
 
 
-def _ensure_unique_port(settings: Settings, tunnel: Tunnel, ignore_id: str | None = None) -> None:
+def _ensure_unique_endpoint(settings: Settings, tunnel: Tunnel, ignore_id: str | None = None) -> None:
     for item in settings.tunnels:
         if ignore_id is not None and item.id == ignore_id:
             continue
-        if item.port == tunnel.port:
-            raise ValueError(f"port {tunnel.port} already exists")
+        if item.mode == "direct" and tunnel.mode == "direct" and item.port == tunnel.port:
+            raise ValueError(f"direct listen port {tunnel.port} already exists")
+        if (
+            item.mode == "portal"
+            and tunnel.mode == "portal"
+            and item.portal_address.lower() == tunnel.portal_address.lower()
+            and item.portal_port == tunnel.portal_port
+        ):
+            raise ValueError(
+                f"portal endpoint {tunnel.portal_address}:{tunnel.portal_port} already exists"
+            )
+        if item.mode == "portal" and tunnel.mode == "portal" and item.uuid == tunnel.uuid:
+            raise ValueError(f"portal UUID {tunnel.uuid} already exists")
 
 
 def add_tunnel(tunnel: Tunnel) -> Tunnel:
     settings = load_settings()
-    _ensure_unique_port(settings, tunnel)
+    _ensure_unique_endpoint(settings, tunnel)
     settings.tunnels.append(tunnel)
     save_settings(settings)
     return tunnel
@@ -68,7 +79,7 @@ def add_tunnel(tunnel: Tunnel) -> Tunnel:
 
 def update_tunnel(tunnel_id: str, tunnel: Tunnel) -> Tunnel:
     settings = load_settings()
-    _ensure_unique_port(settings, tunnel, ignore_id=tunnel_id)
+    _ensure_unique_endpoint(settings, tunnel, ignore_id=tunnel_id)
     for index, item in enumerate(settings.tunnels):
         if item.id == tunnel_id:
             tunnel.id = tunnel_id

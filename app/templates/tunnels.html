@@ -2,12 +2,12 @@
 {% block content %}
 <div class="card">
   <h1>多隧道管理</h1>
-  <p>这里是主要配置入口。你只需要在网页表格和表单里管理多个隧道，后端会自动合成一个 Xray config.json。</p>
+  <p>直连模式由 A 连接本机监听端口；Portal 模式由本机使用 VMess over mKCP 主动连接 A，不需要 B 端公网 IP。</p>
   <button onclick="newTunnel()">新增隧道</button>
   <table>
     <thead>
       <tr>
-        <th>启用</th><th>名称</th><th>协议</th><th>监听</th><th>mKCP</th><th>操作</th>
+        <th>启用</th><th>名称</th><th>模式</th><th>协议</th><th>端点</th><th>B 端目标</th><th>状态</th><th>操作</th>
       </tr>
     </thead>
     <tbody id="tunnelRows"></tbody>
@@ -20,9 +20,41 @@
   <div class="grid">
     <div><label>名称</label><input id="name"></div>
     <div><label>启用 <input id="enable" type="checkbox"></label></div>
-    <div><label>监听地址</label><input id="listen"></div>
-    <div><label>监听端口</label><input id="port" type="number"></div>
+    <div>
+      <label>模式</label>
+      <select id="mode" onchange="onModeChange()">
+        <option value="direct">公网直连</option>
+        <option value="portal">Portal（B 主动连接）</option>
+      </select>
+    </div>
     <div><label>协议</label><select id="protocol"><option value="vless">vless</option><option value="vmess">vmess</option></select></div>
+  </div>
+
+  <div id="directFields">
+    <h3>公网直连</h3>
+    <div class="grid">
+      <div><label>B 端监听地址</label><input id="listen"></div>
+      <div><label>B 端监听端口</label><input id="port" type="number"></div>
+    </div>
+  </div>
+
+  <div id="portalFields" class="hidden">
+    <h3>Portal 主动连接</h3>
+    <p class="notice">这里填写 B 能访问到的 A 地址和 A 面板中的 Portal UDP 端口。A 地址不保存在 x-ui。</p>
+    <div class="grid">
+      <div><label>A 端地址 / 域名</label><input id="portal_address" placeholder="例如 qiujun.casacam.net"></div>
+      <div><label>A 端 Portal UDP 端口</label><input id="portal_port" type="number"></div>
+      <div><label>A 端填写的 B 目标地址</label><input id="target_address" placeholder="127.0.0.1"></div>
+      <div><label>A 端填写的 B 目标端口</label><input id="target_port" type="number"></div>
+      <div>
+        <label>入口网络</label>
+        <select id="network"><option value="tcp">tcp</option><option value="udp">udp</option><option value="tcp,udp">tcp,udp</option></select>
+      </div>
+    </div>
+  </div>
+
+  <h3>VMess / mKCP 参数</h3>
+  <div class="grid">
     <div><label>UUID</label><input id="uuid"><button class="secondary" onclick="generateUuid()">生成 UUID</button></div>
     <div><label>FinalMask UDP header</label><select id="kcp_final_mask_type"><option>none</option><option>header-srtp</option><option>header-utp</option><option>header-wechat</option><option>header-dtls</option><option>header-wireguard</option></select></div>
     <div><label>mtu</label><input id="kcp_mtu" type="number"></div>
@@ -34,7 +66,7 @@
     <div><label>writeBufferSize</label><input id="kcp_write_buffer_size" type="number"></div>
     <div><label>备注</label><input id="remark"></div>
   </div>
-  <button onclick="saveTunnel()">保存隧道</button>
+  <button onclick="saveTunnel()">保存并应用</button>
   <button class="secondary" onclick="newTunnel()">清空表单</button>
 </div>
 
@@ -46,16 +78,35 @@
 {% block scripts %}
 <script>
 let tunnels = [];
-const fields = ['id','name','listen','port','protocol','uuid','kcp_final_mask_type','kcp_mtu','kcp_tti','kcp_uplink_capacity','kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'];
+const fields = [
+  'id','name','mode','listen','port','portal_address','portal_port','target_address','target_port','network',
+  'protocol','uuid','kcp_final_mask_type','kcp_mtu','kcp_tti','kcp_uplink_capacity',
+  'kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'
+];
 
 function defaultTunnel() {
   return {
-    id: '', name: 'default', enable: true, listen: '0.0.0.0', port: 40000,
-    protocol: 'vless', uuid: crypto.randomUUID(), kcp_final_mask_type: 'none',
+    id: '', name: 'default', enable: true, mode: 'direct',
+    listen: '0.0.0.0', port: 40000,
+    portal_address: '', portal_port: 40000,
+    target_address: '127.0.0.1', target_port: 18081, network: 'tcp',
+    protocol: 'vmess', uuid: crypto.randomUUID(), kcp_final_mask_type: 'none',
     kcp_mtu: 1350, kcp_tti: 20,
-    kcp_uplink_capacity: 20, kcp_downlink_capacity: 100, kcp_congestion: false,
+    kcp_uplink_capacity: 5, kcp_downlink_capacity: 20, kcp_congestion: false,
     kcp_read_buffer_size: 2, kcp_write_buffer_size: 2, remark: ''
   };
+}
+
+function endpointText(tunnel) {
+  return tunnel.mode === 'portal'
+    ? `主动连接 ${tunnel.portal_address}:${tunnel.portal_port}/UDP`
+    : `监听 ${tunnel.listen}:${tunnel.port}/UDP`;
+}
+
+function targetText(tunnel) {
+  return tunnel.mode === 'portal'
+    ? `${tunnel.target_address}:${tunnel.target_port} (${tunnel.network})`
+    : '由 A 端请求决定';
 }
 
 async function loadTunnels() {
@@ -66,9 +117,11 @@ async function loadTunnels() {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${tunnel.enable ? '是' : '否'}</td>
       <td>${tunnel.name}</td>
+      <td>${tunnel.mode === 'portal' ? 'Portal' : '直连'}</td>
       <td>${tunnel.protocol}</td>
-      <td>${tunnel.listen}:${tunnel.port}</td>
-      <td>${tunnel.kcp_final_mask_type || 'none'} / Xray 26</td>
+      <td>${endpointText(tunnel)}</td>
+      <td>${targetText(tunnel)}（由 A 请求携带）</td>
+      <td>${tunnel.mode === 'portal' ? '未知（在 A 端测试）' : '本地监听'}</td>
       <td>
         <button onclick="editTunnel('${tunnel.id}')">编辑</button>
         <button onclick="toggleTunnel('${tunnel.id}')">启用/禁用</button>
@@ -80,11 +133,13 @@ async function loadTunnels() {
 }
 
 function fillForm(tunnel) {
+  const value = Object.assign(defaultTunnel(), tunnel || {});
   for (const field of fields) {
-    if (document.getElementById(field)) document.getElementById(field).value = tunnel[field] ?? '';
+    if (document.getElementById(field)) document.getElementById(field).value = value[field] ?? '';
   }
-  document.getElementById('enable').checked = !!tunnel.enable;
-  document.getElementById('kcp_congestion').checked = !!tunnel.kcp_congestion;
+  document.getElementById('enable').checked = !!value.enable;
+  document.getElementById('kcp_congestion').checked = !!value.kcp_congestion;
+  onModeChange();
 }
 
 function readForm() {
@@ -92,8 +147,14 @@ function readForm() {
     id: document.getElementById('id').value || undefined,
     name: document.getElementById('name').value,
     enable: document.getElementById('enable').checked,
+    mode: document.getElementById('mode').value,
     listen: document.getElementById('listen').value,
     port: Number(document.getElementById('port').value),
+    portal_address: document.getElementById('portal_address').value,
+    portal_port: Number(document.getElementById('portal_port').value),
+    target_address: document.getElementById('target_address').value,
+    target_port: Number(document.getElementById('target_port').value),
+    network: document.getElementById('network').value,
     protocol: document.getElementById('protocol').value,
     uuid: document.getElementById('uuid').value,
     kcp_final_mask_type: document.getElementById('kcp_final_mask_type').value,
@@ -106,6 +167,22 @@ function readForm() {
     kcp_write_buffer_size: Number(document.getElementById('kcp_write_buffer_size').value),
     remark: document.getElementById('remark').value,
   };
+}
+
+function onModeChange() {
+  const portal = document.getElementById('mode').value === 'portal';
+  document.getElementById('directFields').classList.toggle('hidden', portal);
+  document.getElementById('portalFields').classList.toggle('hidden', !portal);
+  document.getElementById('protocol').disabled = portal;
+  if (portal) document.getElementById('protocol').value = 'vmess';
+}
+
+function showApplyResult(result, action) {
+  if (result.applied) {
+    showMessage('message', `${action}成功，Xray 配置已校验并应用。\n${result.stdout || ''}`);
+  } else {
+    showMessage('message', `${action}已保存，但 Xray 应用失败；系统已尝试恢复旧配置，请检查下方启动结果。\n${result.stderr || ''}`);
+  }
 }
 
 function newTunnel() {
@@ -125,29 +202,40 @@ async function saveTunnel() {
   const payload = readForm();
   const id = document.getElementById('id').value;
   try {
+    let result;
     if (id) {
-      await api(`/api/tunnels/${id}`, {method: 'PUT', body: JSON.stringify(payload)});
+      result = await api(`/api/tunnels/${id}`, {method: 'PUT', body: JSON.stringify(payload)});
     } else {
       delete payload.id;
-      await api('/api/tunnels', {method: 'POST', body: JSON.stringify(payload)});
+      result = await api('/api/tunnels', {method: 'POST', body: JSON.stringify(payload)});
     }
     await loadTunnels();
     newTunnel();
-    showMessage('message', '保存成功');
+    showApplyResult(result, '保存');
   } catch (err) {
     showMessage('message', err.message);
   }
 }
 
 async function toggleTunnel(id) {
-  await api(`/api/tunnels/${id}/toggle`, {method: 'POST'});
-  await loadTunnels();
+  try {
+    const result = await api(`/api/tunnels/${id}/toggle`, {method: 'POST'});
+    await loadTunnels();
+    showApplyResult(result, '切换');
+  } catch (err) {
+    showMessage('message', err.message);
+  }
 }
 
 async function deleteTunnel(id) {
   if (!confirm('确定删除这个隧道吗？')) return;
-  await api(`/api/tunnels/${id}`, {method: 'DELETE'});
-  await loadTunnels();
+  try {
+    const result = await api(`/api/tunnels/${id}`, {method: 'DELETE'});
+    await loadTunnels();
+    showApplyResult(result, '删除');
+  } catch (err) {
+    showMessage('message', err.message);
+  }
 }
 
 async function copyASide(id) {

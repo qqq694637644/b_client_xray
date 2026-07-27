@@ -109,6 +109,13 @@ pre {
   margin-top: 12px;
 }
 
+.notice {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
 .hidden {
   display: none;
 }

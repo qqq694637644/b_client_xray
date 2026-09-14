@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card">
   <h1>多隧道管理</h1>
-  <p>直连模式由 A 连接本机监听端口；Portal 模式由本机使用 VMess over mKCP 主动连接 A，不需要 B 端公网 IP。</p>
+  <p>直连模式由 A 连接本机监听端口；Portal 模式由本机主动连接 A，不需要 B 端公网 IP。Portal 可使用 VMess/mKCP，或 VLESS/XHTTP/H3 经 CDN 连接。</p>
   <button onclick="newTunnel()">新增隧道</button>
   <table>
     <thead>
@@ -40,10 +40,18 @@
 
   <div id="portalFields" class="hidden">
     <h3>Portal 主动连接</h3>
-    <p class="notice">这里填写 B 能访问到的 A 地址和 A 面板中的 Portal UDP 端口。A 地址不保存在 x-ui。</p>
+    <p class="notice">这里填写 B 能访问到的 A/CDN 地址。VLESS/XHTTP/H3 模式直接连接 CDN 443，不依赖 TUN 二次套 mKCP。</p>
     <div class="grid">
+      <div>
+        <label>Portal 传输</label>
+        <select id="portal_transport" onchange="onPortalTransportChange()">
+          <option value="mkcp">VMess / mKCP</option>
+          <option value="xhttp">VLESS / XHTTP / H3</option>
+        </select>
+      </div>
       <div><label>A 端地址 / 域名</label><input id="portal_address" placeholder="例如 qiujun.casacam.net"></div>
-      <div><label>A 端 Portal UDP 端口</label><input id="portal_port" type="number"></div>
+      <div><label id="portalPortLabel">A 端 Portal UDP 端口</label><input id="portal_port" type="number"></div>
+      <div id="xhttpPathField" class="hidden"><label>XHTTP Path</label><input id="xhttp_path" placeholder="/portal-xhttp"></div>
       <div><label>A 端填写的 B 目标地址</label><input id="target_address" placeholder="127.0.0.1"></div>
       <div><label>A 端填写的 B 目标端口</label><input id="target_port" type="number"></div>
       <div>
@@ -53,9 +61,15 @@
     </div>
   </div>
 
-  <h3>VMess / mKCP 参数</h3>
+  <h3>通用认证</h3>
   <div class="grid">
     <div><label>UUID</label><input id="uuid"><button class="secondary" onclick="generateUuid()">生成 UUID</button></div>
+    <div><label>备注</label><input id="remark"></div>
+  </div>
+
+  <div id="kcpFields">
+  <h3>VMess / mKCP 参数</h3>
+  <div class="grid">
     <div><label>FinalMask UDP header</label><select id="kcp_final_mask_type"><option>none</option><option>header-srtp</option><option>header-utp</option><option>header-wechat</option><option>header-dtls</option><option>header-wireguard</option></select></div>
     <div><label>mtu</label><input id="kcp_mtu" type="number"></div>
     <div><label>tti</label><input id="kcp_tti" type="number"></div>
@@ -64,8 +78,9 @@
     <div><label>congestion <input id="kcp_congestion" type="checkbox"></label></div>
     <div><label>readBufferSize</label><input id="kcp_read_buffer_size" type="number"></div>
     <div><label>writeBufferSize</label><input id="kcp_write_buffer_size" type="number"></div>
-    <div><label>备注</label><input id="remark"></div>
   </div>
+  </div>
+  <div id="xhttpInfo" class="notice hidden">VLESS/XHTTP Portal 固定使用 TLS + ALPN h3 + mode=packet-up；Host/SNI 使用 Portal 地址。</div>
   <button onclick="saveTunnel()">保存并应用</button>
   <button class="secondary" onclick="newTunnel()">清空表单</button>
 </div>
@@ -79,7 +94,7 @@
 <script>
 let tunnels = [];
 const fields = [
-  'id','name','mode','listen','port','portal_address','portal_port','target_address','target_port','network',
+  'id','name','mode','listen','port','portal_address','portal_port','portal_transport','xhttp_path','target_address','target_port','network',
   'protocol','uuid','kcp_final_mask_type','kcp_mtu','kcp_tti','kcp_uplink_capacity',
   'kcp_downlink_capacity','kcp_read_buffer_size','kcp_write_buffer_size','remark'
 ];
@@ -88,7 +103,7 @@ function defaultTunnel() {
   return {
     id: '', name: 'default', enable: true, mode: 'direct',
     listen: '0.0.0.0', port: 40000,
-    portal_address: '', portal_port: 40000,
+    portal_address: '', portal_port: 40000, portal_transport: 'mkcp', xhttp_path: '/portal-xhttp',
     target_address: '127.0.0.1', target_port: 18081, network: 'tcp',
     protocol: 'vmess', uuid: crypto.randomUUID(), kcp_final_mask_type: 'none',
     kcp_mtu: 1350, kcp_tti: 20,
@@ -99,7 +114,9 @@ function defaultTunnel() {
 
 function endpointText(tunnel) {
   return tunnel.mode === 'portal'
-    ? `主动连接 ${tunnel.portal_address}:${tunnel.portal_port}/UDP`
+    ? (tunnel.portal_transport === 'xhttp'
+      ? `主动连接 ${tunnel.portal_address}:${tunnel.portal_port}/H3`
+      : `主动连接 ${tunnel.portal_address}:${tunnel.portal_port}/UDP`)
     : `监听 ${tunnel.listen}:${tunnel.port}/UDP`;
 }
 
@@ -152,6 +169,8 @@ function readForm() {
     port: Number(document.getElementById('port').value),
     portal_address: document.getElementById('portal_address').value,
     portal_port: Number(document.getElementById('portal_port').value),
+    portal_transport: document.getElementById('portal_transport').value,
+    xhttp_path: document.getElementById('xhttp_path').value,
     target_address: document.getElementById('target_address').value,
     target_port: Number(document.getElementById('target_port').value),
     network: document.getElementById('network').value,
@@ -174,7 +193,23 @@ function onModeChange() {
   document.getElementById('directFields').classList.toggle('hidden', portal);
   document.getElementById('portalFields').classList.toggle('hidden', !portal);
   document.getElementById('protocol').disabled = portal;
-  if (portal) document.getElementById('protocol').value = 'vmess';
+  if (portal) onPortalTransportChange();
+}
+
+function onPortalTransportChange() {
+  const portal = document.getElementById('mode').value === 'portal';
+  const transport = document.getElementById('portal_transport').value;
+  const xhttp = portal && transport === 'xhttp';
+  if (portal) document.getElementById('protocol').value = xhttp ? 'vless' : 'vmess';
+  document.getElementById('xhttpPathField').classList.toggle('hidden', !xhttp);
+  document.getElementById('xhttpInfo').classList.toggle('hidden', !xhttp);
+  document.getElementById('kcpFields').classList.toggle('hidden', xhttp);
+  document.getElementById('portalPortLabel').textContent = xhttp ? 'CDN 公网端口' : 'A 端 Portal UDP 端口';
+  if (xhttp && (!document.getElementById('portal_port').value || document.getElementById('portal_port').value === '40000')) {
+    document.getElementById('portal_port').value = 443;
+  } else if (!xhttp && document.getElementById('portal_port').value === '443') {
+    document.getElementById('portal_port').value = 40000;
+  }
 }
 
 function showApplyResult(result, action) {

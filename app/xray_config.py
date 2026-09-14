@@ -106,6 +106,39 @@ def build_direct_routing_rule(tunnel: Tunnel) -> dict[str, Any]:
 
 
 def build_reverse_outbound(tunnel: Tunnel) -> dict[str, Any]:
+    if tunnel.portal_transport == "xhttp":
+        return {
+            "tag": reverse_outbound_tag(tunnel),
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": tunnel.portal_address,
+                        "port": tunnel.portal_port,
+                        "users": [
+                            {
+                                "id": tunnel.uuid,
+                                "encryption": "none",
+                            }
+                        ],
+                    }
+                ]
+            },
+            "streamSettings": {
+                "network": "xhttp",
+                "security": "tls",
+                "xhttpSettings": {
+                    "path": tunnel.xhttp_path,
+                    "host": tunnel.portal_address,
+                    "mode": "packet-up",
+                },
+                "tlsSettings": {
+                    "serverName": tunnel.portal_address,
+                    "alpn": ["h3"],
+                },
+            },
+        }
+
     return {
         "tag": reverse_outbound_tag(tunnel),
         "protocol": "vmess",
@@ -192,29 +225,49 @@ def build_xray_config(settings: Settings) -> dict[str, Any]:
 
 
 def build_a_side_text(settings: Settings, tunnel: Tunnel) -> str:
-    common = [
-        f"模式：{tunnel.mode}",
-        f"协议：{tunnel.protocol}",
-        f"UUID：{tunnel.uuid}",
-        "传输：mKCP",
-        f"FinalMask UDP header：{tunnel.kcp_final_mask_type}",
-        f"mtu：{tunnel.kcp_mtu}",
-        f"tti：{tunnel.kcp_tti}",
-        f"uplinkCapacity：{tunnel.kcp_uplink_capacity}",
-        f"downlinkCapacity：{tunnel.kcp_downlink_capacity}",
-        f"congestion：{str(tunnel.kcp_congestion).lower()}",
-        f"readBufferSize：{tunnel.kcp_read_buffer_size}",
-        f"writeBufferSize：{tunnel.kcp_write_buffer_size}",
-    ]
+    common = [f"模式：{tunnel.mode}", f"协议：{tunnel.protocol}", f"UUID：{tunnel.uuid}"]
+    if tunnel.mode == "portal" and tunnel.portal_transport == "xhttp":
+        common.extend(
+            [
+                "传输：XHTTP/H3",
+                f"XHTTP path：{tunnel.xhttp_path}",
+                "XHTTP mode：packet-up",
+                "TLS：on",
+                "ALPN：h3",
+            ]
+        )
+    else:
+        common.extend(
+            [
+                "传输：mKCP",
+                f"FinalMask UDP header：{tunnel.kcp_final_mask_type}",
+                f"mtu：{tunnel.kcp_mtu}",
+                f"tti：{tunnel.kcp_tti}",
+                f"uplinkCapacity：{tunnel.kcp_uplink_capacity}",
+                f"downlinkCapacity：{tunnel.kcp_downlink_capacity}",
+                f"congestion：{str(tunnel.kcp_congestion).lower()}",
+                f"readBufferSize：{tunnel.kcp_read_buffer_size}",
+                f"writeBufferSize：{tunnel.kcp_write_buffer_size}",
+            ]
+        )
     if tunnel.mode == "portal":
-        details = [
-            "A 端模式：Portal",
-            f"A 端 Portal UDP 端口：{tunnel.portal_port}",
-            f"B 端连接 A 地址：{tunnel.portal_address}",
-            f"B 端目标：{format_host_port(tunnel.target_address, tunnel.target_port)}",
-            f"入口网络：{tunnel.network}",
-            f"内部反向域名：{reverse_domain(tunnel)}",
-        ]
+        if tunnel.portal_transport == "xhttp":
+            details = [
+                "A 端模式：Portal / VLESS XHTTP",
+                f"B 端连接 CDN：{format_host_port(tunnel.portal_address, tunnel.portal_port)}",
+                f"B 端目标：{format_host_port(tunnel.target_address, tunnel.target_port)}",
+                f"入口网络：{tunnel.network}",
+                f"内部反向域名：{reverse_domain(tunnel)}",
+            ]
+        else:
+            details = [
+                "A 端模式：Portal",
+                f"A 端 Portal UDP 端口：{tunnel.portal_port}",
+                f"B 端连接 A 地址：{tunnel.portal_address}",
+                f"B 端目标：{format_host_port(tunnel.target_address, tunnel.target_port)}",
+                f"入口网络：{tunnel.network}",
+                f"内部反向域名：{reverse_domain(tunnel)}",
+            ]
     else:
         details = [
             "A 端模式：公网直连",

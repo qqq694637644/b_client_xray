@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 Protocol = Literal["vless", "vmess"]
 TunnelMode = Literal["direct", "portal"]
 TunnelNetwork = Literal["tcp", "udp", "tcp,udp"]
+PortalTransport = Literal["mkcp", "xhttp"]
 KcpFinalMaskType = Literal["none", "header-srtp", "header-utp", "header-wechat", "header-dtls", "header-wireguard"]
 
 LEGACY_KCP_HEADER_TO_FINAL_MASK = {
@@ -68,6 +69,8 @@ class Tunnel(BaseModel):
     # portal mode: B actively connects to the A-side VMess/mKCP portal.
     portal_address: str = ""
     portal_port: int = 40000
+    portal_transport: PortalTransport = "mkcp"
+    xhttp_path: str = "/portal-xhttp"
     target_address: str = "127.0.0.1"
     target_port: int = 18081
     network: TunnelNetwork = "tcp"
@@ -95,6 +98,8 @@ class Tunnel(BaseModel):
         # rewriting the file merely because it was read.
         legacy_without_mode = "mode" not in migrated
         migrated.setdefault("mode", "direct")
+        migrated.setdefault("portal_transport", "mkcp")
+        migrated.setdefault("xhttp_path", "/portal-xhttp")
         if legacy_without_mode:
             migrated.setdefault("kcp_uplink_capacity", 20)
             migrated.setdefault("kcp_downlink_capacity", 100)
@@ -110,6 +115,7 @@ class Tunnel(BaseModel):
         "name",
         "listen",
         "portal_address",
+        "xhttp_path",
         "target_address",
         "kcp_final_mask_type",
         "remark",
@@ -155,12 +161,17 @@ class Tunnel(BaseModel):
         if not self.uuid:
             raise ValueError("UUID cannot be empty")
         if self.mode == "portal":
-            if self.protocol != "vmess":
-                raise ValueError("portal mode only supports vmess")
             if not self.portal_address:
                 raise ValueError("portal_address cannot be empty in portal mode")
             if not self.target_address:
                 raise ValueError("target_address cannot be empty in portal mode")
+            if self.portal_transport == "mkcp" and self.protocol != "vmess":
+                raise ValueError("mKCP portal only supports vmess")
+            if self.portal_transport == "xhttp":
+                if self.protocol != "vless":
+                    raise ValueError("XHTTP portal only supports vless")
+                if not self.xhttp_path.startswith("/"):
+                    raise ValueError("xhttp_path must start with /")
         elif not self.listen:
             raise ValueError("listen cannot be empty in direct mode")
         return self

@@ -40,8 +40,8 @@
 ## 直连与 Portal
 
 - `direct` 保持原有行为：B 监听 VMess/VLESS mKCP 端口，A 主动连接 B。
-- `portal` 用于 B 无公网 IP：B 通过 VMess over mKCP 主动连接 A 的 Portal UDP 端口，并生成 Xray `reverse.bridges`。
-- Portal 模式固定 `VMess + alterId=0 + security=auto`，不启用额外 outbound mux。
+- `portal` 用于 B 无公网 IP：B 通过 Xray `reverse.bridges` 主动连接 A。Portal 可选择兼容的 VMess/mKCP，或 VLESS/XHTTP/H3 经 CDN/Caddy 连接 A。
+- VMess/mKCP Portal 固定 `alterId=0 + security=auto`；VLESS/XHTTP Portal 固定 TLS + ALPN `h3` + `packet-up`，Host/SNI 使用 Portal/CDN 地址。
 - Portal 的目标地址和端口由 A 的 dokodemo-door 请求携带，B 的 Bridge 路由到 `direct` 后执行；`127.0.0.1` 表示 B 本机。入口网络可选 TCP、UDP 或 TCP+UDP。
 - A、B 两端的 UUID、mKCP、FinalMask 参数必须手工保持一致；实现按 Xray-core v26.3.27（提交 `d2758a023cd7f4174a5a5fa4ff66e487d4342ba0`）生成配置。
 - 网页面板可以手工启动，但“保存并应用”通过 `sc.exe` 管理 Xray，因此 `xray.exe` 必须注册为 Windows 服务，服务名与设置页一致。启动后会等待服务进入 `RUNNING` 并稳定保持 2 秒；失败时恢复旧配置。

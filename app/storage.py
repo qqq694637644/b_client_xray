@@ -62,9 +62,14 @@ def _ensure_unique_endpoint(settings: Settings, tunnel: Tunnel, ignore_id: str |
             and item.portal_address.lower() == tunnel.portal_address.lower()
             and item.portal_port == tunnel.portal_port
         ):
-            raise ValueError(
-                f"portal endpoint {tunnel.portal_address}:{tunnel.portal_port} already exists"
-            )
+            if item.portal_transport == "mkcp" or tunnel.portal_transport == "mkcp":
+                raise ValueError(
+                    f"portal endpoint {tunnel.portal_address}:{tunnel.portal_port} already exists"
+                )
+            if item.xhttp_path == tunnel.xhttp_path:
+                raise ValueError(
+                    f"portal XHTTP endpoint {tunnel.portal_address}:{tunnel.portal_port}{tunnel.xhttp_path} already exists"
+                )
         if item.mode == "portal" and tunnel.mode == "portal" and item.uuid == tunnel.uuid:
             raise ValueError(f"portal UUID {tunnel.uuid} already exists")
 

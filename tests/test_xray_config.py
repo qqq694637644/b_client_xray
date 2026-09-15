@@ -50,6 +50,12 @@ def test_build_config_keeps_direct_tunnels_compatible() -> None:
 
     config = build_xray_config(settings)
 
+    assert config["log"] == {
+        "access": r"C:\xray\access.log",
+        "error": r"C:\xray\error.log",
+        "loglevel": "info",
+    }
+
     assert "reverse" not in config
     assert len(config["inbounds"]) == 2
     assert [item["tag"] for item in config["inbounds"]] == ["tunnel-in-ssh", "tunnel-in-web"]
@@ -208,13 +214,68 @@ def test_legacy_settings_default_to_direct_and_migrate_finalmask() -> None:
     }
 
 
-def test_portal_rejects_vless() -> None:
-    with pytest.raises(ValidationError, match="portal mode only supports vmess"):
+def test_portal_transport_protocol_pairs_are_validated() -> None:
+    with pytest.raises(ValidationError, match="mKCP portal only supports vmess"):
         Tunnel(
             mode="portal",
             portal_address="a.example.net",
+            portal_transport="mkcp",
             protocol="vless",
         )
+
+    with pytest.raises(ValidationError, match="XHTTP portal only supports vless"):
+        Tunnel(
+            mode="portal",
+            portal_address="cdn.example.net",
+            portal_port=443,
+            portal_transport="xhttp",
+            xhttp_path="/portal",
+            protocol="vmess",
+        )
+
+
+def test_portal_builds_vless_xhttp_h3_reverse_outbound() -> None:
+    tunnel = Tunnel(
+        id="home-h3",
+        name="home-h3",
+        mode="portal",
+        portal_address="cdn.example.net",
+        portal_port=443,
+        portal_transport="xhttp",
+        xhttp_path="/portal-home",
+        target_address="127.0.0.1",
+        target_port=18081,
+        network="tcp,udp",
+        protocol="vless",
+        uuid="33333333-3333-3333-3333-333333333333",
+    )
+
+    config = build_xray_config(Settings(tunnels=[tunnel]))
+    outbound = next(
+        item for item in config["outbounds"] if item["tag"] == reverse_outbound_tag(tunnel)
+    )
+    assert outbound["protocol"] == "vless"
+    server = outbound["settings"]["vnext"][0]
+    assert server["address"] == "cdn.example.net"
+    assert server["port"] == 443
+    assert server["users"] == [
+        {"id": tunnel.uuid, "encryption": "none"}
+    ]
+    stream = outbound["streamSettings"]
+    assert stream["network"] == "xhttp"
+    assert stream["security"] == "tls"
+    assert stream["xhttpSettings"] == {
+        "path": "/portal-home",
+        "host": "cdn.example.net",
+        "mode": "packet-up",
+    }
+    assert stream["tlsSettings"] == {
+        "serverName": "cdn.example.net",
+        "alpn": ["h3"],
+    }
+    assert config["reverse"] == {
+        "bridges": [{"tag": bridge_tag(tunnel), "domain": reverse_domain(tunnel)}]
+    }
 
 
 def test_uuid_is_canonicalized_before_reverse_domain_generation() -> None:

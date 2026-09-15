@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import PureWindowsPath
 from typing import Any
 
 from app.models import Settings, Tunnel
@@ -207,9 +208,12 @@ def build_xray_config(settings: Settings) -> dict[str, Any]:
     for tunnel in portal_tunnels:
         routing_rules.extend(build_portal_routing_rules(tunnel))
 
+    xray_dir = PureWindowsPath(settings.xray_path)
     config: dict[str, Any] = {
         "log": {
-            "loglevel": "warning",
+            "access": str(xray_dir / "access.log"),
+            "error": str(xray_dir / "error.log"),
+            "loglevel": "info",
         },
         "inbounds": [build_direct_inbound(tunnel) for tunnel in direct_tunnels],
         "outbounds": outbounds,

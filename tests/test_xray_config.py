@@ -50,6 +50,12 @@ def test_build_config_keeps_direct_tunnels_compatible() -> None:
 
     config = build_xray_config(settings)
 
+    assert config["log"] == {
+        "access": r"C:\xray\access.log",
+        "error": r"C:\xray\error.log",
+        "loglevel": "info",
+    }
+
     assert "reverse" not in config
     assert len(config["inbounds"]) == 2
     assert [item["tag"] for item in config["inbounds"]] == ["tunnel-in-ssh", "tunnel-in-web"]
